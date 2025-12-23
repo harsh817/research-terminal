@@ -1,10 +1,11 @@
+// Updated Dec 22, 2025
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, x-cron-secret',
 };
 
 interface RSSSource {
@@ -13,6 +14,12 @@ interface RSSSource {
   url: string;
   region: string;
   active: boolean;
+  last_fetched?: string;
+  last_modified?: string;
+  etag?: string;
+  fetch_interval_minutes?: number;
+  last_error?: string;
+  error_count?: number;
 }
 
 interface NewsItem {
@@ -24,25 +31,86 @@ interface NewsItem {
   markets: string[];
   themes: string[];
   hash: string;
+  summary?: string;
 }
 
-async function fetchRSSFeed(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Research Terminal RSS Reader/1.0',
-    },
-  });
+interface ParsedItem {
+  title?: string;
+  link?: string;
+  pubDate?: string;
+  description?: string;
+  guid?: string;
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch RSS: ${response.status} ${response.statusText}`);
+async function fetchRSSFeed(url: string, source: RSSSource): Promise<{ xml: string; headers: Headers }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const headers: Record<string, string> = {
+      'User-Agent': 'Research Terminal RSS Reader/1.0',
+    };
+
+    // Add conditional GET headers if we have cached values
+    if (source.etag) {
+      headers['If-None-Match'] = source.etag;
+    }
+    if (source.last_modified) {
+      headers['If-Modified-Since'] = source.last_modified;
+    }
+
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.status === 304) {
+      // Not modified, return empty to indicate no new content
+      return { xml: '', headers: response.headers };
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch RSS: ${response.status} ${response.statusText}`);
+    }
+
+    const xml = await response.text();
+    return { xml, headers: response.headers };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout after 30 seconds');
+    }
+    throw error;
+  }
+}
+
+function parseXML(xml: string): ParsedItem[] {
+  if (!xml || xml.trim() === '') {
+    return [];
   }
 
-  return response.text();
+  const items: ParsedItem[] = [];
+
+  try {
+    // Check if it's Atom or RSS
+    const isAtom = xml.includes('<feed') || xml.includes('<entry>');
+
+    if (isAtom) {
+      return parseAtomXML(xml);
+    } else {
+      return parseRSSXML(xml);
+    }
+  } catch (error) {
+    console.error('Error parsing XML:', error);
+    return [];
+  }
 }
 
-function parseXML(xml: string): Array<{ title?: string; link?: string; pubDate?: string }> {
-  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-  const items = [];
+function parseRSSXML(xml: string): ParsedItem[] {
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+  const items: ParsedItem[] = [];
 
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
@@ -50,11 +118,41 @@ function parseXML(xml: string): Array<{ title?: string; link?: string; pubDate?:
     const titleMatch = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(itemXml);
     const linkMatch = /<link[^>]*>([\s\S]*?)<\/link>/i.exec(itemXml);
     const pubDateMatch = /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i.exec(itemXml);
+    const descriptionMatch = /<description[^>]*>([\s\S]*?)<\/description>/i.exec(itemXml);
+    const guidMatch = /<guid[^>]*>([\s\S]*?)<\/guid>/i.exec(itemXml);
 
     items.push({
       title: titleMatch ? cleanText(titleMatch[1]) : '',
       link: linkMatch ? cleanText(linkMatch[1]) : '',
-      pubDate: pubDateMatch ? cleanText(pubDateMatch[1]) : new Date().toISOString(),
+      pubDate: pubDateMatch ? cleanText(pubDateMatch[1]) : '',
+      description: descriptionMatch ? cleanText(descriptionMatch[1]) : '',
+      guid: guidMatch ? cleanText(guidMatch[1]) : '',
+    });
+  }
+
+  return items;
+}
+
+function parseAtomXML(xml: string): ParsedItem[] {
+  const entryRegex = /<entry[^>]*>([\s\S]*?)<\/entry>/gi;
+  const items: ParsedItem[] = [];
+
+  let match;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const entryXml = match[1];
+    const titleMatch = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(entryXml);
+    const linkMatch = /<link[^>]*href="([^"]*)"[^>]*>/i.exec(entryXml);
+    const publishedMatch = /<(?:published|updated)[^>]*>([\s\S]*?)<\/(?:published|updated)>/i.exec(entryXml);
+    const summaryMatch = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(entryXml);
+    const contentMatch = /<content[^>]*>([\s\S]*?)<\/content>/i.exec(entryXml);
+    const idMatch = /<id[^>]*>([\s\S]*?)<\/id>/i.exec(entryXml);
+
+    items.push({
+      title: titleMatch ? cleanText(titleMatch[1]) : '',
+      link: linkMatch ? linkMatch[1] : '',
+      pubDate: publishedMatch ? cleanText(publishedMatch[1]) : '',
+      description: summaryMatch ? cleanText(summaryMatch[1]) : contentMatch ? cleanText(contentMatch[1]) : '',
+      guid: idMatch ? cleanText(idMatch[1]) : '',
     });
   }
 
@@ -62,14 +160,32 @@ function parseXML(xml: string): Array<{ title?: string; link?: string; pubDate?:
 }
 
 function cleanText(text: string): string {
-  return text
-    .replace(/<[^>]*>/g, '')
+  let out = text.replace(/<[^>]*>/g, '')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .trim();
+
+  // Decode numeric HTML entities (decimal and hex), e.g. &#8217; or &#x2019;
+  out = out.replace(/&#x([0-9A-Fa-f]+);/g, (_m, hex) => {
+    try {
+      return String.fromCharCode(parseInt(hex, 16));
+    } catch {
+      return '';
+    }
+  });
+
+  out = out.replace(/&#(\d+);/g, (_m, dec) => {
+    try {
+      return String.fromCharCode(parseInt(dec, 10));
+    } catch {
+      return '';
+    }
+  });
+
+  return out;
 }
 
 function normalizeDate(dateString: string): string {
@@ -81,10 +197,15 @@ function normalizeDate(dateString: string): string {
   }
 }
 
-function generateHash(headline: string, source: string): string {
-  const normalized = `${headline.toLowerCase().trim()}||${source.toLowerCase().trim()}`;
+function generateHash(headline: string, source: string, dedupeKey?: string): string {
+  const normalized = dedupeKey || `${headline.toLowerCase().trim()}||${source.toLowerCase().trim()}`;
   // Use built-in crypto for hash
   return btoa(normalized).substring(0, 64); // Simplified hash for Deno
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 3) + '...';
 }
 
 function tagRegion(headline: string, source: string): string {
@@ -134,20 +255,70 @@ function tagThemes(headline: string, source: string): string[] {
 async function processRSSFeed(
   client: any,
   source: RSSSource
-): Promise<{ success: number; failed: number; error?: string }> {
+): Promise<{ success: number; failed: number; error?: string; notModified?: boolean }> {
   try {
-    const xml = await fetchRSSFeed(source.url);
-    const items = parseXML(xml);
+    // Check if we should skip this feed based on interval
+    if (source.last_fetched && source.fetch_interval_minutes) {
+      const lastFetched = new Date(source.last_fetched);
+      const now = new Date();
+      const minutesSinceLastFetch = (now.getTime() - lastFetched.getTime()) / (1000 * 60);
 
+      if (minutesSinceLastFetch < source.fetch_interval_minutes) {
+        return { success: 0, failed: 0, notModified: true };
+      }
+    }
+
+    const { xml, headers } = await fetchRSSFeed(source.url, source);
+
+    // If 304 Not Modified, just update the last_fetched time
+    if (xml === '') {
+      await client.from('rss_sources').update({
+        last_fetched: new Date().toISOString(),
+        error_count: 0,
+        last_error: null,
+      }).eq('id', source.id);
+
+      return { success: 0, failed: 0, notModified: true };
+    }
+
+    const items = parseXML(xml);
     let inserted = 0;
 
     for (const item of items) {
       if (!item.title || !item.link) continue;
 
-      const hash = generateHash(item.title, source.name);
-      const region = tagRegion(item.title, source.name);
-      const markets = tagMarkets(item.title, source.name);
-      const themes = tagThemes(item.title, source.name);
+      // Use GUID or link+timestamp for deduplication
+      const dedupeKey = item.guid || `${item.link}-${item.pubDate}`;
+      const hash = generateHash(item.title, source.name, dedupeKey);
+
+      let region = tagRegion(item.title, source.name);
+      let markets = tagMarkets(item.title, source.name);
+      let themes = tagThemes(item.title, source.name);
+
+      // BBC filtering for Americas relevance
+      const isBBC = source.name === 'BBC World News';
+      if (isBBC) {
+        const content = `${item.title} ${item.description || ''}`.toLowerCase();
+        const keywords = {
+          americas: ['us', 'america', 'united states', 'wall street', 'fed', 'federal reserve'],
+          equities: ['stocks', 'equity', 'shares', 'nasdaq', 'nyse'],
+          fixedIncome: ['bonds', 'treasury', 'yield'],
+          fx: ['dollar', 'usd', 'currency'],
+          commodities: ['oil', 'gold', 'commodity']
+        };
+
+        // Check for Americas relevance
+        const hasAmericas = keywords.americas.some(kw => content.includes(kw));
+        if (hasAmericas) {
+          region = 'AMERICAS';
+          markets = [];
+          // Assign markets based on keywords
+          if (keywords.equities.some(kw => content.includes(kw))) markets.push('EQUITIES');
+          if (keywords.fixedIncome.some(kw => content.includes(kw))) markets.push('FIXED_INCOME');
+          if (keywords.fx.some(kw => content.includes(kw))) markets.push('FX');
+          if (keywords.commodities.some(kw => content.includes(kw))) markets.push('COMMODITIES');
+        }
+      }
 
       const newsItem: NewsItem = {
         headline: item.title,
@@ -158,6 +329,7 @@ async function processRSSFeed(
         markets,
         themes,
         hash,
+        summary: item.description ? truncateText(item.description, 500) : undefined,
       };
 
       const { error } = await client.from('news_items').insert([newsItem]).select();
@@ -166,6 +338,21 @@ async function processRSSFeed(
         inserted++;
       }
     }
+
+    // Update source with new caching info
+    const updateData: any = {
+      last_fetched: new Date().toISOString(),
+      error_count: 0,
+      last_error: null,
+    };
+
+    const etag = headers.get('etag');
+    const lastModified = headers.get('last-modified');
+
+    if (etag) updateData.etag = etag;
+    if (lastModified) updateData.last_modified = lastModified;
+
+    await client.from('rss_sources').update(updateData).eq('id', source.id);
 
     // Log ingestion result
     await client.from('ingestion_logs').insert([
@@ -180,6 +367,14 @@ async function processRSSFeed(
     return { success: inserted, failed: items.length - inserted };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
+
+    // Update error tracking
+    const newErrorCount = (source.error_count || 0) + 1;
+    await client.from('rss_sources').update({
+      last_error: errorMsg,
+      error_count: newErrorCount,
+      last_fetched: new Date().toISOString(),
+    }).eq('id', source.id);
 
     // Log failure
     await client.from('ingestion_logs').insert([
@@ -196,6 +391,7 @@ async function processRSSFeed(
 }
 
 Deno.serve(async (req: Request) => {
+  console.log('Function called with method:', req.method);
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -204,34 +400,36 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Validate internal secret
-    const internalSecret = Deno.env.get('INTERNAL_CRON_SECRET');
-    const authHeader = req.headers.get('authorization');
-    const providedSecret = authHeader?.replace('Bearer ', '');
-
-    if (!internalSecret || providedSecret !== internalSecret) {
+    // Validate cron secret for security
+    const cronSecret = req.headers.get('x-cron-secret');
+    const expectedSecret = Deno.env.get('INTERNAL_CRON_SECRET');
+    
+    if (expectedSecret && cronSecret !== expectedSecret) {
+      console.error('❌ Invalid cron secret provided');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized: Invalid or missing internal secret' }),
+        JSON.stringify({ error: 'Unauthorized - invalid cron secret' }),
         {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
+    console.log('✅ Cron secret validated successfully');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase environment variables');
     }
 
-    const client = createClient(supabaseUrl, supabaseServiceRoleKey);
+    // Use service role key to bypass RLS for ingestion
+    const client = createClient(supabaseUrl, supabaseServiceKey);
 
     // Fetch all active RSS sources
     const { data: sources, error: sourcesError } = await client
       .from('rss_sources')
-      .select('*')
+      .select('id, name, url, region, active, last_fetched, last_modified, etag, fetch_interval_minutes, last_error, error_count')
       .eq('active', true);
 
     if (sourcesError) throw sourcesError;
@@ -249,12 +447,18 @@ Deno.serve(async (req: Request) => {
     const results = [];
     let totalInserted = 0;
     let totalFailed = 0;
+    let totalSkipped = 0;
 
     for (const source of sources as RSSSource[]) {
       const result = await processRSSFeed(client, source);
-      results.push({ source: source.name, ...result });
+      results.push({
+        source: source.name,
+        ...result,
+        skipped: result.notModified ? 1 : 0
+      });
       totalInserted += result.success;
       totalFailed += result.failed;
+      if (result.notModified) totalSkipped++;
     }
 
     // Update system status
@@ -268,6 +472,7 @@ Deno.serve(async (req: Request) => {
         message: 'Ingestion completed',
         totalInserted,
         totalFailed,
+        totalSkipped,
         results,
       }),
       {

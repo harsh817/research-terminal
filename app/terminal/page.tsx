@@ -90,7 +90,6 @@ export default function TerminalPage() {
 
   useEffect(() => {
     checkSoundPermission()
-    simulateConnectionEvents()
   }, [])
 
   const checkSoundPermission = async () => {
@@ -101,16 +100,6 @@ export default function TerminalPage() {
         }, 2000)
       }
     }
-  }
-
-  const simulateConnectionEvents = () => {
-    setTimeout(() => {
-      setStatus('reconnecting')
-
-      setTimeout(() => {
-        setStatus('live')
-      }, 3000)
-    }, 10000)
   }
 
   return (

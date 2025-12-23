@@ -1,9 +1,11 @@
 "use client"
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { TagChip } from '@/components/tag-chip'
 import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
+import { useSoundSettings } from '@/lib/sound-settings-context'
 
 interface Tag {
   type: 'region' | 'market' | 'theme'
@@ -18,40 +20,49 @@ interface NewsItemProps {
   url: string
   timestamp: Date
   tags: Tag[]
+  summary?: string
   isNew?: boolean
 }
 
-export function NewsItem({ id, headline, source, url, timestamp, tags, isNew }: NewsItemProps) {
+export function NewsItem({ id, headline, source, url, timestamp, tags, summary, isNew }: NewsItemProps) {
   const hasPlayedSound = useRef(false)
+  const [showNewBadge, setShowNewBadge] = useState(isNew)
+  const [isHighlighted, setIsHighlighted] = useState(isNew)
+  const { shouldPlaySoundForTags, playNotificationSound } = useSoundSettings()
 
   useEffect(() => {
     if (isNew && !hasPlayedSound.current) {
-      const hasSoundEnabledTags = tags.some(tag => tag.soundEnabled)
-
-      if (hasSoundEnabledTags) {
-        playNotificationSound()
-        hasPlayedSound.current = true
+      // Check if this news item has sound-enabled tags AND user settings allow it
+      if (shouldPlaySoundForTags(tags)) {
+        playNotificationSound().then(played => {
+          if (played) {
+            hasPlayedSound.current = true
+            console.log('🔊 Sound alert for:', headline.substring(0, 50))
+          }
+        })
       }
     }
-  }, [isNew, tags])
+  }, [isNew, tags, shouldPlaySoundForTags, playNotificationSound, headline])
 
-  const playNotificationSound = () => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const oscillator = audioContext.createOscillator()
-    const gainNode = audioContext.createGain()
+  // Auto-fade "NEW" badge and highlight after 5 seconds
+  useEffect(() => {
+    if (isNew) {
+      // Remove "NEW" badge after 5 seconds
+      const badgeTimer = setTimeout(() => {
+        setShowNewBadge(false)
+      }, 5000)
 
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContext.destination)
+      // Remove highlight after 8 seconds (longer fade)
+      const highlightTimer = setTimeout(() => {
+        setIsHighlighted(false)
+      }, 8000)
 
-    oscillator.frequency.value = 800
-    oscillator.type = 'sine'
-
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-
-    oscillator.start(audioContext.currentTime)
-    oscillator.stop(audioContext.currentTime + 0.3)
-  }
+      return () => {
+        clearTimeout(badgeTimer)
+        clearTimeout(highlightTimer)
+      }
+    }
+  }, [isNew])
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
@@ -67,11 +78,12 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew }: 
 
   return (
     <Card
-      className={`group relative cursor-pointer border-l-4 bg-zinc-900 p-2 transition-all hover:shadow-lg hover:shadow-zinc-950/50 ${
-        isNew
-          ? 'border-l-blue-500 bg-blue-500/10 animate-in fade-in slide-in-from-top-2 duration-500'
-          : 'border-l-transparent hover:border-l-zinc-700'
-      }`}
+      className={cn(
+        'group relative cursor-pointer border-l-4 p-2 transition-all duration-700 hover:shadow-lg hover:shadow-zinc-950/50',
+        isHighlighted
+          ? 'border-l-amber-500 bg-amber-500/20 animate-in fade-in slide-in-from-top-2 duration-500'
+          : 'border-l-transparent bg-zinc-900 hover:border-l-zinc-700'
+      )}
       onClick={() => window.open(url, '_blank')}
     >
       <div className="space-y-1">
@@ -81,9 +93,9 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew }: 
               <time className="text-[11px] font-mono font-semibold tabular-nums text-zinc-400">
                 {formatTimestamp(timestamp)}
               </time>
-              {isNew && (
-                <span className="inline-flex items-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                  New
+              {showNewBadge && (
+                <span className="inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black shadow-lg animate-pulse">
+                  ⚡ NEW
                 </span>
               )}
             </div>
@@ -91,6 +103,12 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew }: 
             <h3 className="text-sm font-semibold leading-tight text-zinc-100 transition-colors group-hover:text-blue-400">
               {headline}
             </h3>
+
+            {summary && (
+              <p className="text-xs text-zinc-400 leading-relaxed mt-1 line-clamp-2">
+                {summary}
+              </p>
+            )}
 
             <div className="flex items-center text-xs text-muted-foreground">
               <span className="text-[11px] font-medium text-zinc-500">{source}</span>

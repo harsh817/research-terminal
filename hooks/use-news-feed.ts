@@ -17,6 +17,7 @@ export interface NewsItemData {
   url: string
   timestamp: Date
   tags: NewsTag[]
+  summary?: string
   isNew?: boolean
 }
 
@@ -48,6 +49,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
 
     const fetchInitialNews = async () => {
       try {
+        console.log(`[useNewsFeed:${pane}] Fetching pane configuration...`)
         const { data: paneData, error: paneError } = await supabase
           .from('panes')
           .select('id, title, rules')
@@ -60,21 +62,33 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         }
 
         const rules = paneData.rules as { regions?: string[], markets?: string[], themes?: string[] }
+        console.log(`[useNewsFeed:${pane}] Pane rules:`, rules)
 
+        console.log(`[useNewsFeed:${pane}] Fetching news items...`)
         const { data: newsData, error } = await supabase
           .from('news_items')
-          .select('id, headline, source, url, published_at, region, markets, themes')
+          .select('id, headline, source, url, published_at, region, markets, themes, summary')
           .order('published_at', { ascending: false })
           .limit(100)
 
         if (error) throw error
 
+        console.log(`[useNewsFeed:${pane}] Fetched ${newsData?.length || 0} total news items`)
+
         const filteredNews = newsData
           ?.filter((item: any) => {
-            const matchesRegion = !rules.regions || rules.regions.length === 0 || rules.regions.includes(item.region)
-            const matchesMarket = !rules.markets || rules.markets.length === 0 || item.markets?.some((m: string) => rules.markets?.includes(m))
-            const matchesTheme = !rules.themes || rules.themes.length === 0 || item.themes?.some((t: string) => rules.themes?.includes(t))
+            const hasRegionRules = Array.isArray(rules.regions) && rules.regions.length > 0
+            const hasMarketRules = Array.isArray(rules.markets) && rules.markets.length > 0
+            const hasThemeRules = Array.isArray(rules.themes) && rules.themes.length > 0
 
+            // If no rules specified at all, include everything
+            if (!hasRegionRules && !hasMarketRules && !hasThemeRules) return true
+
+            const matchesRegion = hasRegionRules ? rules.regions.includes(item.region) : false
+            const matchesMarket = hasMarketRules ? item.markets?.some((m: string) => rules.markets.includes(m)) : false
+            const matchesTheme = hasThemeRules ? item.themes?.some((t: string) => rules.themes.includes(t)) : false
+
+            // Match if any of the specified rule groups match
             return matchesRegion || matchesMarket || matchesTheme
           })
           .slice(0, maxItems)
@@ -83,6 +97,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             return transformNewsItem(item, false)
           }) || []
 
+        console.log(`[useNewsFeed:${pane}] Filtered to ${filteredNews.length} matching items for display`)
         setNewsItems(filteredNews)
         setError(null)
       } catch (error) {
@@ -95,8 +110,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
 
     fetchInitialNews()
 
+    console.log(`[useNewsFeed:${pane}] Setting up real-time subscription...`)
     const channel = supabase
-      .channel('news-updates')
+      .channel(`news-updates-${pane}`)
       .on(
         'postgres_changes',
         {
@@ -105,9 +121,11 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           table: 'news_items',
         },
         async (payload) => {
+          console.log(`[useNewsFeed:${pane}] Received real-time insert:`, payload.new)
           const newItemId = payload.new.id
 
           if (loadedItemIds.current.has(newItemId)) {
+            console.log(`[useNewsFeed:${pane}] Item ${newItemId} already loaded, skipping`)
             return
           }
 
@@ -122,11 +140,28 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           const rules = paneData.rules as { regions?: string[], markets?: string[], themes?: string[] }
           const newItem = payload.new as any
 
-          const matchesRegion = !rules.regions || rules.regions.length === 0 || rules.regions.includes(newItem.region)
-          const matchesMarket = !rules.markets || rules.markets.length === 0 || newItem.markets?.some((m: string) => rules.markets?.includes(m))
-          const matchesTheme = !rules.themes || rules.themes.length === 0 || newItem.themes?.some((t: string) => rules.themes?.includes(t))
+          const hasRegionRules = Array.isArray(rules.regions) && rules.regions.length > 0
+          const hasMarketRules = Array.isArray(rules.markets) && rules.markets.length > 0
+          const hasThemeRules = Array.isArray(rules.themes) && rules.themes.length > 0
 
-          if (!matchesRegion && !matchesMarket && !matchesTheme) return
+          // If no rules specified at all, accept everything
+          if (!hasRegionRules && !hasMarketRules && !hasThemeRules) {
+            console.log(`[useNewsFeed:${pane}] No rules specified, accepting all items`)
+            // proceed
+          } else {
+            const matchesRegion = hasRegionRules ? rules.regions.includes(newItem.region) : false
+            const matchesMarket = hasMarketRules ? newItem.markets?.some((m: string) => rules.markets.includes(m)) : false
+            const matchesTheme = hasThemeRules ? newItem.themes?.some((t: string) => rules.themes.includes(t)) : false
+
+            console.log(`[useNewsFeed:${pane}] Item matching:`, { matchesRegion, matchesMarket, matchesTheme })
+            
+            if (!matchesRegion && !matchesMarket && !matchesTheme) {
+              console.log(`[useNewsFeed:${pane}] Item doesn't match pane rules, skipping`)
+              return
+            }
+          }
+
+          console.log(`[useNewsFeed:${pane}] Adding new item to pane`)
 
           const transformedTags: NewsTag[] = [
             { type: 'region', value: newItem.region, soundEnabled: false },
@@ -138,8 +173,11 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           const canPlaySound = now - lastSoundTime.current >= soundCooldown
 
           if (canPlaySound && shouldPlaySoundForTags(transformedTags)) {
+            console.log(`[useNewsFeed:${pane}] Playing sound alert for new item`)
             lastSoundTime.current = now
             playNotificationSound()
+          } else if (!canPlaySound) {
+            console.log(`[useNewsFeed:${pane}] Sound on cooldown, skipping alert`)
           }
 
           loadedItemIds.current.add(newItemId)
@@ -159,9 +197,12 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           }, 5000)
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log(`[useNewsFeed:${pane}] Subscription status:`, status)
+      })
 
     return () => {
+      console.log(`[useNewsFeed:${pane}] Cleaning up subscription`)
       supabase.removeChannel(channel)
     }
   }, [pane, maxItems, soundCooldown])
@@ -183,6 +224,7 @@ function transformNewsItem(rawItem: any, isNew: boolean): NewsItemData {
     url: rawItem.url,
     timestamp: new Date(rawItem.published_at),
     tags,
+    summary: rawItem.summary,
     isNew,
   }
 }

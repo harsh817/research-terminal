@@ -29,7 +29,10 @@ const DEFAULT_SETTINGS: SoundSettings = {
 }
 
 const STORAGE_KEY = 'news-terminal-sound-settings'
+const COOLDOWN_MS = 5000 // 5 second cooldown between sounds
 let hasShownAudioBlockedToast = false
+let lastSoundPlayedAt = 0
+let audioBuffer: AudioBuffer | null = null
 
 export function SoundSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SoundSettings>(DEFAULT_SETTINGS)
@@ -91,6 +94,13 @@ export function SoundSettingsProvider({ children }: { children: ReactNode }) {
   const playNotificationSound = async (): Promise<boolean> => {
     if (!settings.masterEnabled) return false
 
+    // Cooldown check to prevent alert fatigue
+    const now = Date.now()
+    if (now - lastSoundPlayedAt < COOLDOWN_MS) {
+      console.log('Sound on cooldown, skipping')
+      return false
+    }
+
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
 
@@ -98,20 +108,46 @@ export function SoundSettingsProvider({ children }: { children: ReactNode }) {
         await audioContext.resume()
       }
 
-      const oscillator = audioContext.createOscillator()
+      // Create audio buffer if not already created
+      if (!audioBuffer) {
+        const sampleRate = audioContext.sampleRate
+        const duration = 0.4 // 400ms
+        const frequency1 = 880 // A5
+        const frequency2 = 1174.66 // D6 (perfect fourth)
+        
+        const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate)
+        const data = buffer.getChannelData(0)
+        
+        for (let i = 0; i < data.length; i++) {
+          const t = i / sampleRate
+          const envelope = Math.exp(-5 * t) // Exponential decay
+          
+          // Two-tone chord for pleasant sound
+          const tone1 = Math.sin(2 * Math.PI * frequency1 * t)
+          const tone2 = Math.sin(2 * Math.PI * frequency2 * t)
+          
+          data[i] = (tone1 * 0.35 + tone2 * 0.25) * envelope
+        }
+        
+        audioBuffer = buffer
+      }
+
+      // Play the sound
+      const source = audioContext.createBufferSource()
       const gainNode = audioContext.createGain()
-
-      oscillator.connect(gainNode)
+      
+      source.buffer = audioBuffer
+      source.connect(gainNode)
       gainNode.connect(audioContext.destination)
-
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
-      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
-
+      
+      // Apply user volume setting
       gainNode.gain.setValueAtTime(settings.volume / 100, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 0.3)
+      
+      source.start(0)
+      
+      // Update cooldown
+      lastSoundPlayedAt = now
+      console.log('✅ Notification sound played')
 
       return true
     } catch (error) {

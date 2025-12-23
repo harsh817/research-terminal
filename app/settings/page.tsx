@@ -41,17 +41,18 @@ export default function SettingsPage() {
 
   const loadSoundEnabledTags = async () => {
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('tags')
-        .select('*')
-        .eq('sound_enabled', true)
-        .order('type', { ascending: true })
-        .order('value', { ascending: true })
+      // Define high-priority theme tags that should have sound alerts
+      const highPriorityTags: TagData[] = [
+        { id: 'monetary-policy', type: 'theme', value: 'MONETARY_POLICY', sound_enabled: true },
+        { id: 'earnings', type: 'theme', value: 'EARNINGS', sound_enabled: true },
+        { id: 'm-and-a', type: 'theme', value: 'M_AND_A', sound_enabled: true },
+        { id: 'geopolitics', type: 'theme', value: 'GEOPOLITICS', sound_enabled: true },
+        { id: 'risk-event', type: 'theme', value: 'RISK_EVENT', sound_enabled: true },
+        { id: 'economic-data', type: 'theme', value: 'ECONOMIC_DATA', sound_enabled: true },
+        { id: 'regulation', type: 'theme', value: 'REGULATION', sound_enabled: true },
+      ]
 
-      if (error) throw error
-
-      setSoundEnabledTags(data || [])
+      setSoundEnabledTags(highPriorityTags)
       setError(null)
     } catch (error) {
       console.error('Error loading tags:', error)
