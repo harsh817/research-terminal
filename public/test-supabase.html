@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <div id="status">Testing...</div>
+    <h2>Panes:</h2>
+    <pre id="panes"></pre>
+    <h2>News Items (Latest 5):</h2>
+    <pre id="news"></pre>
+    <h2>Console Logs:</h2>
+    <pre id="logs"></pre>
+
+    <script>
+        const logs = [];
+        function log(msg) {
+            console.log(msg);
+            logs.push(msg);
+            document.getElementById('logs').textContent = logs.join('\n');
+        }
+
+        const { createClient } = supabase;
+        
+        const SUPABASE_URL = 'https://tpwervipwozezddyuizg.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwd2Vydmlwd296ZXpkZHl1aXpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU5ODA4NzcsImV4cCI6MjA4MTU1Njg3N30.2cATEr5VLC9-Z58bP-wZIDcl5ADAvrH41B_anXey710';
+        
+        log('Creating Supabase client...');
+        const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        async function testConnection() {
+            try {
+                log('Fetching panes...');
+                const { data: panesData, error: panesError } = await client
+                    .from('panes')
+                    .select('*');
+                
+                if (panesError) {
+                    log('Error fetching panes: ' + panesError.message);
+                    document.getElementById('status').textContent = 'ERROR: ' + panesError.message;
+                } else {
+                    log('Panes fetched successfully: ' + panesData.length + ' panes');
+                    document.getElementById('panes').textContent = JSON.stringify(panesData, null, 2);
+                }
+                
+                log('Fetching news items...');
+                const { data: newsData, error: newsError } = await client
+                    .from('news_items')
+                    .select('id, headline, source, region, markets, themes, published_at')
+                    .order('published_at', { ascending: false })
+                    .limit(5);
+                
+                if (newsError) {
+                    log('Error fetching news: ' + newsError.message);
+                } else {
+                    log('News fetched successfully: ' + newsData.length + ' items');
+                    document.getElementById('news').textContent = JSON.stringify(newsData, null, 2);
+                }
+                
+                document.getElementById('status').textContent = 'SUCCESS! Connection working.';
+                
+                // Test realtime
+                log('Setting up realtime subscription...');
+                const channel = client
+                    .channel('test-channel')
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'news_items'
+                    }, (payload) => {
+                        log('Real-time insert received: ' + payload.new.headline);
+                    })
+                    .subscribe((status) => {
+                        log('Realtime subscription status: ' + status);
+                    });
+                
+            } catch (err) {
+                log('Exception: ' + err.message);
+                document.getElementById('status').textContent = 'EXCEPTION: ' + err.message;
+            }
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>

@@ -33,7 +33,8 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, summary, 
   useEffect(() => {
     if (isNew && !hasPlayedSound.current) {
       // Check if this news item has sound-enabled tags AND user settings allow it
-      if (shouldPlaySoundForTags(tags)) {
+      const tagsWithSound = tags.map(tag => ({ value: tag.value, soundEnabled: tag.soundEnabled ?? false }))
+      if (shouldPlaySoundForTags(tagsWithSound)) {
         playNotificationSound().then(played => {
           if (played) {
             hasPlayedSound.current = true

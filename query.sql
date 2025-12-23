@@ -1,0 +1,1 @@
+SELECT headline, url FROM news_items ORDER BY published_at DESC LIMIT 5;

@@ -84,9 +84,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             // If no rules specified at all, include everything
             if (!hasRegionRules && !hasMarketRules && !hasThemeRules) return true
 
-            const matchesRegion = hasRegionRules ? rules.regions.includes(item.region) : false
-            const matchesMarket = hasMarketRules ? item.markets?.some((m: string) => rules.markets.includes(m)) : false
-            const matchesTheme = hasThemeRules ? item.themes?.some((t: string) => rules.themes.includes(t)) : false
+            const matchesRegion = hasRegionRules && rules.regions ? rules.regions.includes(item.region) : false
+            const matchesMarket = hasMarketRules && rules.markets ? item.markets?.some((m: string) => rules.markets!.includes(m)) : false
+            const matchesTheme = hasThemeRules && rules.themes ? item.themes?.some((t: string) => rules.themes!.includes(t)) : false
 
             // Match if any of the specified rule groups match
             return matchesRegion || matchesMarket || matchesTheme
@@ -149,9 +149,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             console.log(`[useNewsFeed:${pane}] No rules specified, accepting all items`)
             // proceed
           } else {
-            const matchesRegion = hasRegionRules ? rules.regions.includes(newItem.region) : false
-            const matchesMarket = hasMarketRules ? newItem.markets?.some((m: string) => rules.markets.includes(m)) : false
-            const matchesTheme = hasThemeRules ? newItem.themes?.some((t: string) => rules.themes.includes(t)) : false
+            const matchesRegion = hasRegionRules && rules.regions ? rules.regions.includes(newItem.region) : false
+            const matchesMarket = hasMarketRules && rules.markets ? newItem.markets?.some((m: string) => rules.markets!.includes(m)) : false
+            const matchesTheme = hasThemeRules && rules.themes ? newItem.themes?.some((t: string) => rules.themes!.includes(t)) : false
 
             console.log(`[useNewsFeed:${pane}] Item matching:`, { matchesRegion, matchesMarket, matchesTheme })
             
