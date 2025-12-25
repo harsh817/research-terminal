@@ -52,7 +52,11 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           .gte('published_at', threeDaysAgo)
           .order('published_at', { ascending: false })
           .limit(10)
-          .then(({ data }) => {
+          .then(({ data, error }) => {
+            if (error) {
+              console.error(`[useNewsFeed:${pane}] Error refreshing data:`, error)
+              return
+            }
             if (data && data.length > 0) {
               const newItems = data.filter((item: any) => !loadedItemIds.current.has(item.id))
               if (newItems.length > 0) {
@@ -60,7 +64,6 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
               }
             }
           })
-          .catch(console.error)
       }
     }
 
