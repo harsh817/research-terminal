@@ -42,14 +42,17 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log(`[useNewsFeed:${pane}] Page visible again, refreshing data...`)
-        // Refetch data to catch missed updates
+        console.log(`[useNewsFeed:${pane}] Page visible again, refreshing today's news...`)
+        // Refetch data to catch missed updates and check if date changed
         const supabase = createClient()
-        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+        const startOfToday = new Date()
+        startOfToday.setUTCHours(0, 0, 0, 0)
+        const startOfTodayISO = startOfToday.toISOString()
+        
         supabase
           .from('news_items')
           .select('id, headline, source, url, published_at, region, markets, themes, summary')
-          .gte('published_at', threeDaysAgo)
+          .gte('published_at', startOfTodayISO)
           .order('published_at', { ascending: false })
           .limit(10)
           .then(({ data, error }) => {
@@ -60,7 +63,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             if (data && data.length > 0) {
               const newItems = data.filter((item: any) => !loadedItemIds.current.has(item.id))
               if (newItems.length > 0) {
-                console.log(`[useNewsFeed:${pane}] Found ${newItems.length} new items during sleep`)
+                console.log(`[useNewsFeed:${pane}] Found ${newItems.length} new items after wake`)
               }
             }
           })
@@ -68,7 +71,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
     }
 
     const handleOnline = () => {
-      console.log(`[useNewsFeed:${pane}] Network online, connection restored`)
+      console.log(`[useNewsFeed:${pane}] Network online, will reconnect on visibility change`)
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -110,11 +113,15 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         console.log(`[useNewsFeed:${pane}] Pane rules:`, rules)
 
         console.log(`[useNewsFeed:${pane}] Fetching news items...`)
-        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+        const startOfToday = new Date()
+        startOfToday.setUTCHours(0, 0, 0, 0)
+        const startOfTodayISO = startOfToday.toISOString()
+        console.log(`[useNewsFeed:${pane}] Fetching news from today only (since ${startOfTodayISO})`)
+        
         const { data: newsData, error } = await supabase
           .from('news_items')
           .select('id, headline, source, url, published_at, region, markets, themes, summary')
-          .gte('published_at', threeDaysAgo)
+          .gte('published_at', startOfTodayISO)
           .order('published_at', { ascending: false })
           .limit(100)
 
@@ -176,6 +183,17 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             return
           }
 
+          // Check if item is from today
+          const newItem = payload.new as any
+          const itemDate = new Date(newItem.published_at)
+          const todayStart = new Date()
+          todayStart.setUTCHours(0, 0, 0, 0)
+          
+          if (itemDate < todayStart) {
+            console.log(`[useNewsFeed:${pane}] Skipping old item (not from today): ${newItem.published_at}`)
+            return
+          }
+
           const { data: paneData } = await supabase
             .from('panes')
             .select('rules')
@@ -185,7 +203,6 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
           if (!paneData) return
 
           const rules = paneData.rules as { regions?: string[], markets?: string[], themes?: string[] }
-          const newItem = payload.new as any
 
           const hasRegionRules = Array.isArray(rules.regions) && rules.regions.length > 0
           const hasMarketRules = Array.isArray(rules.markets) && rules.markets.length > 0
@@ -274,9 +291,24 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
 
     channelRef.current = channel
 
+    // Set up midnight refresh to show new day's news
+    const now = new Date()
+    const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+    const msUntilMidnight = tomorrow.getTime() - now.getTime()
+    
+    console.log(`[useNewsFeed:${pane}] Will auto-refresh at midnight UTC (in ${Math.round(msUntilMidnight / 1000 / 60)} minutes)`)
+    
+    const midnightTimer = setTimeout(() => {
+      console.log(`[useNewsFeed:${pane}] 🌅 Midnight UTC reached! Clearing old news and fetching new day's news...`)
+      loadedItemIds.current.clear()
+      setNewsItems([])
+      fetchInitialNews()
+    }, msUntilMidnight)
+
     return () => {
       isActiveRef.current = false
       console.log(`[useNewsFeed:${pane}] Cleaning up subscription`)
+      clearTimeout(midnightTimer)
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
