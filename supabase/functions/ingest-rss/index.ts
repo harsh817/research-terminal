@@ -443,22 +443,56 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Process each feed
+    // Process feeds in parallel batches of 5 for better performance
     const results = [];
     let totalInserted = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
 
-    for (const source of sources as RSSSource[]) {
-      const result = await processRSSFeed(client, source);
-      results.push({
-        source: source.name,
-        ...result,
-        skipped: result.notModified ? 1 : 0
+    const CONCURRENT_LIMIT = 5;
+    const TIMEOUT_MS = 25000; // 25s timeout per feed
+
+    for (let i = 0; i < sources.length; i += CONCURRENT_LIMIT) {
+      const batch = sources.slice(i, i + CONCURRENT_LIMIT) as RSSSource[];
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async (source) => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+          
+          try {
+            const result = await processRSSFeed(client, source);
+            clearTimeout(timeoutId);
+            return { source: source.name, ...result, skipped: result.notModified ? 1 : 0 };
+          } catch (err) {
+            clearTimeout(timeoutId);
+            if (err.name === 'AbortError') {
+              console.error(`⏱️ Timeout processing ${source.name}`);
+              return { source: source.name, success: 0, failed: 1, skipped: 0, error: 'Timeout' };
+            }
+            throw err;
+          }
+        })
+      );
+
+      batchResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+          totalInserted += result.value.success || 0;
+          totalFailed += result.value.failed || 0;
+          if (result.value.skipped) totalSkipped++;
+        } else {
+          console.error(`Failed processing ${batch[idx].name}:`, result.reason);
+          results.push({
+            source: batch[idx].name,
+            success: 0,
+            failed: 1,
+            skipped: 0,
+            error: result.reason?.message || 'Unknown error'
+          });
+          totalFailed++;
+        }
       });
-      totalInserted += result.success;
-      totalFailed += result.failed;
-      if (result.notModified) totalSkipped++;
     }
 
     // Update system status

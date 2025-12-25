@@ -15,7 +15,9 @@ jobs:
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.INTERNAL_CRON_SECRET }}" \
             "${{ secrets.SUPABASE_URL }}/functions/v1/ingest-rss"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          INTERNAL_CRON_SECRET: ${{ secrets.INTERNAL_CRON_SECRET }}

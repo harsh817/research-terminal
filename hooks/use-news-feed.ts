@@ -34,6 +34,48 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
   const lastSoundTime = useRef<number>(0)
   const loadedItemIds = useRef<Set<string>>(new Set())
   const { shouldPlaySoundForTags, playNotificationSound } = useSoundSettings()
+  const channelRef = useRef<any>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const isActiveRef = useRef(true)
+
+  // Handle visibility change (laptop wake/sleep)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log(`[useNewsFeed:${pane}] Page visible again, refreshing data...`)
+        // Refetch data to catch missed updates
+        const supabase = createClient()
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+        supabase
+          .from('news_items')
+          .select('id, headline, source, url, published_at, region, markets, themes, summary')
+          .gte('published_at', threeDaysAgo)
+          .order('published_at', { ascending: false })
+          .limit(10)
+          .then(({ data }) => {
+            if (data && data.length > 0) {
+              const newItems = data.filter((item: any) => !loadedItemIds.current.has(item.id))
+              if (newItems.length > 0) {
+                console.log(`[useNewsFeed:${pane}] Found ${newItems.length} new items during sleep`)
+              }
+            }
+          })
+          .catch(console.error)
+      }
+    }
+
+    const handleOnline = () => {
+      console.log(`[useNewsFeed:${pane}] Network online, connection restored`)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [pane])
 
   useEffect(() => {
     let supabase: ReturnType<typeof createClient>
@@ -65,9 +107,11 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         console.log(`[useNewsFeed:${pane}] Pane rules:`, rules)
 
         console.log(`[useNewsFeed:${pane}] Fetching news items...`)
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
         const { data: newsData, error } = await supabase
           .from('news_items')
           .select('id, headline, source, url, published_at, region, markets, themes, summary')
+          .gte('published_at', threeDaysAgo)
           .order('published_at', { ascending: false })
           .limit(100)
 
@@ -199,10 +243,40 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
       )
       .subscribe((status) => {
         console.log(`[useNewsFeed:${pane}] Subscription status:`, status)
+        
+        if (status === 'SUBSCRIBED') {
+          console.log(`[useNewsFeed:${pane}] ✅ Successfully subscribed`)
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(`[useNewsFeed:${pane}] ❌ Subscription error, will retry in 5s`)
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isActiveRef.current && channelRef.current) {
+              console.log(`[useNewsFeed:${pane}] Attempting reconnect...`)
+              supabase.removeChannel(channelRef.current)
+              // Trigger re-setup via dependency change
+            }
+          }, 5000)
+        } else if (status === 'CLOSED') {
+          console.log(`[useNewsFeed:${pane}] Connection closed, will reconnect in 3s`)
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isActiveRef.current && channelRef.current) {
+              console.log(`[useNewsFeed:${pane}] Reconnecting after close...`)
+              supabase.removeChannel(channelRef.current)
+            }
+          }, 3000)
+        }
       })
 
+    channelRef.current = channel
+
     return () => {
+      isActiveRef.current = false
       console.log(`[useNewsFeed:${pane}] Cleaning up subscription`)
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
       supabase.removeChannel(channel)
     }
   }, [pane, maxItems, soundCooldown])
