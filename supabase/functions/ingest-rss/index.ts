@@ -2,6 +2,11 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.58.0';
 
+// Circuit Breaker Configuration
+const CIRCUIT_BREAKER_THRESHOLD = 5; // Disable source after 5 consecutive failures
+const CIRCUIT_BREAKER_RESET_HOURS = 2; // Re-enable after 2 hours
+const MAX_ERROR_COUNT = 10; // Permanently mark as problematic after 10 total failures
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -443,6 +448,45 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Circuit Breaker: Filter out sources that have failed too many times
+    const now = Date.now();
+    const activeSources = sources.filter((source: RSSSource) => {
+      const errorCount = source.error_count || 0;
+      
+      // Permanently skip sources with too many errors
+      if (errorCount >= MAX_ERROR_COUNT) {
+        console.log(`🚫 Skipping ${source.name}: Permanently disabled (${errorCount} errors)`);
+        return false;
+      }
+      
+      // Temporarily skip sources in circuit breaker cooldown
+      if (errorCount >= CIRCUIT_BREAKER_THRESHOLD && source.last_fetched) {
+        const lastFetchTime = new Date(source.last_fetched).getTime();
+        const hoursSinceLastFetch = (now - lastFetchTime) / (1000 * 60 * 60);
+        
+        if (hoursSinceLastFetch < CIRCUIT_BREAKER_RESET_HOURS) {
+          console.log(`⏸️ Skipping ${source.name}: In cooldown (${errorCount} consecutive errors, retry in ${(CIRCUIT_BREAKER_RESET_HOURS - hoursSinceLastFetch).toFixed(1)}h)`);
+          return false;
+        } else {
+          console.log(`🔄 Retrying ${source.name}: Cooldown expired, attempting recovery...`);
+        }
+      }
+      
+      return true;
+    });
+
+    console.log(`📊 Processing ${activeSources.length} of ${sources.length} sources (${sources.length - activeSources.length} filtered by circuit breaker)`);
+
+    if (activeSources.length === 0) {
+      return new Response(
+        JSON.stringify({ message: 'All sources temporarily disabled by circuit breaker. Check source errors and retry in 2 hours.' }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     // Process feeds in parallel batches of 5 for better performance
     const results = [];
     let totalInserted = 0;
@@ -452,8 +496,8 @@ Deno.serve(async (req: Request) => {
     const CONCURRENT_LIMIT = 5;
     const TIMEOUT_MS = 25000; // 25s timeout per feed
 
-    for (let i = 0; i < sources.length; i += CONCURRENT_LIMIT) {
-      const batch = sources.slice(i, i + CONCURRENT_LIMIT) as RSSSource[];
+    for (let i = 0; i < activeSources.length; i += CONCURRENT_LIMIT) {
+      const batch = activeSources.slice(i, i + CONCURRENT_LIMIT) as RSSSource[];
       
       const batchResults = await Promise.allSettled(
         batch.map(async (source) => {

@@ -66,11 +66,24 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, summary, 
   }, [isNew])
 
   const formatTimestamp = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    })
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    
+    if (isToday) {
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+    }
   }
 
   const regionTags = tags.filter(tag => tag.type === 'region').slice(0, 1)
