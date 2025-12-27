@@ -62,7 +62,6 @@ export function HeaderBar() {
             <span className="text-zinc-100">{formatDate(currentTime)}</span>
           </div>
           <span className="text-zinc-600">|</span>
-          <span className="text-zinc-400">
           <span className="font-mono text-zinc-100">{formatTime(currentTime)}</span>
         </div>
 
