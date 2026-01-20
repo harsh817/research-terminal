@@ -22,13 +22,13 @@ const PANE_CONFIGS = [
     pane: 'europe'
   },
   {
-    id: 'asia-pacific',
+    id: 'asia_pacific',
     title: 'Asia Pacific',
     description: 'APAC market news including China, Japan, India, and Southeast Asia.',
     pane: 'asia_pacific'
   },
   {
-    id: 'macro-policy',
+    id: 'macro_policy',
     title: 'Macro & Policy',
     description: 'Central bank decisions, fiscal policy, and macroeconomic indicators.',
     pane: 'macro_policy'
@@ -40,7 +40,7 @@ const PANE_CONFIGS = [
     pane: 'corporate'
   },
   {
-    id: 'risk-events',
+    id: 'risk_events',
     title: 'Risk Events',
     description: 'Geopolitical events, regulatory changes, and systemic risk factors.',
     pane: 'risk_events'

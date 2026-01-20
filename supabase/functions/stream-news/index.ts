@@ -29,27 +29,32 @@ function formatSSEMessage(event: string, data: any): string {
 function shouldIncludeItem(item: any, paneRules: any): boolean {
   if (!paneRules) return true;
 
-  const { regions, markets, themes } = paneRules;
+  const { regions, markets, themes, keywords, filterMode } = paneRules;
 
-  if (regions && regions.length > 0 && !regions.includes(item.region)) {
-    return false;
+  // Keyword filtering
+  const hasKeywords = keywords && keywords.length > 0;
+  let matchesKeyword = true;
+
+  if (hasKeywords) {
+    const searchText = `${item.headline} ${item.source}`.toLowerCase();
+    matchesKeyword = keywords.some((kw: string) =>
+      searchText.includes(kw.toLowerCase())
+    );
   }
 
-  if (markets && markets.length > 0) {
-    const itemMarkets = item.markets || [];
-    if (!markets.some((m: string) => itemMarkets.includes(m))) {
-      return false;
-    }
+  // If keywords-only mode, return keyword match result
+  if (filterMode === 'keywords-only') {
+    return matchesKeyword;
   }
 
-  if (themes && themes.length > 0) {
-    const itemThemes = item.themes || [];
-    if (themes.length > 0 && !themes.some((t: string) => itemThemes.includes(t))) {
-      return false;
-    }
-  }
+  // Hybrid mode (default): tag filtering AND keyword filtering
+  const matchesRegion = !regions || regions.length === 0 || regions.includes(item.region);
+  const matchesMarket = !markets || markets.length === 0 || (item.markets || []).some((m: string) => markets.includes(m));
+  const matchesTheme = !themes || themes.length === 0 || (item.themes || []).some((t: string) => themes.includes(t));
 
-  return true;
+  const matchesTags = matchesRegion || matchesMarket || matchesTheme;
+
+  return matchesTags && matchesKeyword;
 }
 
 Deno.serve(async (req: Request) => {

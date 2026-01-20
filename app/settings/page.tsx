@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Volume2, Loader2 } from 'lucide-react'
+import { ArrowLeft, Volume2, Loader2, Filter, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -106,12 +106,36 @@ export default function SettingsPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Sound Settings</h1>
-            <p className="mt-1 text-sm text-zinc-400">Configure audio alerts and notifications</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Settings</h1>
+            <p className="mt-1 text-sm text-zinc-400">Configure your terminal preferences</p>
           </div>
         </div>
 
         <div className="space-y-6">
+          <Card className="border-zinc-800 bg-zinc-900/50 shadow-lg">
+            <CardHeader className="border-b border-zinc-800 bg-zinc-900/50">
+              <CardTitle>Quick Access</CardTitle>
+              <CardDescription>Navigate to different settings pages</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid gap-3">
+                <Link href="/settings/keywords">
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-800/50 cursor-pointer">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-md bg-blue-500/20 p-2">
+                        <Filter className="h-5 w-5 text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-zinc-100">Keyword Filters</p>
+                        <p className="text-sm text-zinc-400">Configure keywords for each pane</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-zinc-500" />
+                  </div>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
           <Card className="border-zinc-800 bg-zinc-900/50 shadow-lg">
             <CardHeader className="border-b border-zinc-800 bg-zinc-900/50">
               <CardTitle className="flex items-center gap-2">

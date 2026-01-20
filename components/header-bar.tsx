@@ -48,7 +48,9 @@ export function HeaderBar() {
 
         <div className="flex items-center gap-2 text-sm font-medium">
           <span className="text-zinc-400">NY Time:</span>
-          <span className="font-mono text-zinc-100">{formatTime(currentTime)}</span>
+          <span className="font-mono text-zinc-100" suppressHydrationWarning>
+            {formatTime(currentTime)}
+          </span>
         </div>
 
         <div className="flex items-center gap-4">

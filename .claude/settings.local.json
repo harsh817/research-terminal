@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase status:*)",
+      "Bash(supabase db remote list:*)",
+      "Bash(ls:*)",
+      "Bash(supabase start:*)",
+      "Bash(supabase:*)",
+      "Bash(powershell.exe -Command \"Start-Process ''C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe''\")",
+      "Bash(psql:*)",
+      "Bash(docker exec:*)"
+    ]
+  }
+}
