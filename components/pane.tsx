@@ -111,7 +111,7 @@ export function Pane({ id, title, description, items }: PaneProps) {
           .maybeSingle()
 
         if (!error && data) {
-          const keywords = data.rules?.keywords || []
+          const keywords = (data as any).rules?.keywords || []
           setKeywordCount(keywords.length)
         }
       } catch (error) {

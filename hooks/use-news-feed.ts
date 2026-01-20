@@ -131,7 +131,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         if (error) throw error
 
         // Fetch read and saved status separately for all news items
-        const newsIds = newsData?.map(item => item.id) || []
+        const newsIds = newsData?.map((item: any) => item.id) || []
         let readItemsSet = new Set<string>()
         let savedItemsSet = new Set<string>()
 
@@ -142,7 +142,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
             .select('news_item_id')
             .eq('user_id', user.id)
             .in('news_item_id', newsIds)
-          readItemsSet = new Set(readItems?.map(r => r.news_item_id) || [])
+          readItemsSet = new Set(readItems?.map((r: any) => r.news_item_id) || [])
 
           // Fetch saved items
           const { data: savedItems } = await supabase

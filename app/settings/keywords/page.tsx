@@ -138,7 +138,7 @@ export default function KeywordSettingsPage() {
       for (const pane of panes) {
         const { error } = await supabase
           .from('panes')
-          .update({ rules: pane.rules })
+          .update({ rules: pane.rules } as never)
           .eq('id', pane.id)
 
         if (error) throw error

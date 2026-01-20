@@ -22,7 +22,7 @@ export async function markAsRead(newsItemId: string): Promise<void> {
         user_id: user.id,
         news_item_id: newsItemId,
         read_at: new Date().toISOString()
-      })
+      } as never)
       .select()
       // Ignore conflicts (item already marked as read)
       
@@ -58,7 +58,7 @@ export async function markAllAsRead(newsItemIds: string[]): Promise<void> {
 
     const { error } = await supabase
       .from('user_read_items')
-      .upsert(readItems, {
+      .upsert(readItems as never, {
         onConflict: 'user_id,news_item_id',
         ignoreDuplicates: true
       })
@@ -96,7 +96,7 @@ export async function getReadStatus(newsItemIds: string[]): Promise<Set<string>>
       return new Set()
     }
 
-    return new Set(data?.map(item => item.news_item_id) || [])
+    return new Set(data?.map((item: any) => item.news_item_id) || [])
   } catch (error) {
     console.error('Error fetching read status:', error)
     return new Set()
