@@ -36,6 +36,16 @@ export function HeaderBar() {
     })
   }
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'America/New_York'
+    })
+  }
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-zinc-800 bg-[#0a0a0a]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0a]/80">
       <div className="container flex h-16 items-center justify-between px-6">
@@ -46,8 +56,12 @@ export function HeaderBar() {
           <h1 className="text-xl font-semibold tracking-tight text-zinc-100">Research Terminal</h1>
         </Link>
 
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <span className="text-zinc-400">NY Time:</span>
+        <div className="flex items-center gap-4 text-sm font-medium">
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-400">NY Time:</span>
+            <span className="text-zinc-100">{formatDate(currentTime)}</span>
+          </div>
+          <span className="text-zinc-600">|</span>
           <span className="font-mono text-zinc-100" suppressHydrationWarning>
             {formatTime(currentTime)}
           </span>

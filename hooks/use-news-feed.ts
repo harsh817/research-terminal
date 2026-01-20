@@ -118,11 +118,22 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         // Fetch news with read status
         const { data: { user } } = await supabase.auth.getUser()
         
+        // Get user's local timezone midnight
+        const now = new Date()
+        const userMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+        
+        // Add 6-hour buffer to handle timezone transitions gracefully
+        const startTime = new Date(userMidnight.getTime() - (6 * 60 * 60 * 1000))
+        const startTimeISO = startTime.toISOString()
+        
+        console.log(`[useNewsFeed:${pane}] Fetching from: ${startTimeISO} (user's today with 6h buffer)`)
+        
         let query = supabase
           .from('news_items')
           .select(`
             id, headline, source, url, published_at, region, markets, themes
           `)
+          .gte('published_at', startTimeISO)
           .order('published_at', { ascending: false })
           .limit(100)
 
