@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Volume2, Loader2, Filter, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Volume2, Loader2, Filter, ChevronRight, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -10,8 +10,10 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSoundSettings } from '@/lib/sound-settings-context'
 import { createClient } from '@/lib/supabase-client'
+import { SourceMonitorDashboard } from '@/components/source-monitor-dashboard'
 
 interface TagData {
   id: string
@@ -107,11 +109,23 @@ export default function SettingsPage() {
           </Link>
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Settings</h1>
-            <p className="mt-1 text-sm text-zinc-400">Configure your terminal preferences</p>
+            <p className="mt-1 text-sm text-zinc-400">Configure audio alerts and monitor RSS sources</p>
           </div>
         </div>
 
-        <div className="space-y-6">
+        <Tabs defaultValue="sound" className="space-y-6">
+          <TabsList className="bg-zinc-900 border border-zinc-800">
+            <TabsTrigger value="sound" className="data-[state=active]:bg-zinc-800">
+              <Volume2 className="h-4 w-4 mr-2" />
+              Sound Settings
+            </TabsTrigger>
+            <TabsTrigger value="sources" className="data-[state=active]:bg-zinc-800">
+              <Activity className="h-4 w-4 mr-2" />
+              Source Monitor
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="sound" className="space-y-6">
           <Card className="border-zinc-800 bg-zinc-900/50 shadow-lg">
             <CardHeader className="border-b border-zinc-800 bg-zinc-900/50">
               <CardTitle>Quick Access</CardTitle>
@@ -289,7 +303,12 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="sources">
+            <SourceMonitorDashboard />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
