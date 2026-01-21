@@ -205,8 +205,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
       const { data: { user } } = await supabase.auth.getUser()
 
       // Subscribe to user_read_items changes to update read status in real-time
+      // Use pane-specific channel names to avoid conflicts
       readItemsChannel = supabase
-        .channel('read-items-updates')
+        .channel(`read-items-${pane}`)
         .on(
           'postgres_changes',
           {
@@ -247,8 +248,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
         .subscribe()
 
       // Subscribe to user_saved_items changes to update saved status in real-time
+      // Use pane-specific channel names to avoid conflicts
       savedItemsChannel = supabase
-        .channel('saved-items-updates')
+        .channel(`saved-items-${pane}`)
         .on(
           'postgres_changes',
           {
@@ -291,8 +293,9 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
     setupSubscriptions()
 
     // Subscribe to real-time updates for new news items
+    // Use pane-specific channel names to avoid conflicts between multiple pane instances
     const channel = supabase
-      .channel('news-updates')
+      .channel(`news-updates-${pane}`)
       .on(
         'postgres_changes',
         {
