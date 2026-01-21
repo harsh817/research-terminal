@@ -13,6 +13,13 @@ interface RSSSource {
   url: string
   region: string
   active: boolean
+  created_at: string
+  last_fetched: string | null
+  last_modified: string | null
+  etag: string | null
+  fetch_interval_minutes: number
+  last_error: string | null
+  error_count: number
 }
 
 interface IngestionLog {
@@ -67,11 +74,23 @@ export function SourceMonitorDashboard() {
 
       if (logsError) throw logsError
 
+      console.log('Total sources:', sourcesData?.length)
+      console.log('Total logs in 24h:', logsData?.length)
+      console.log('Sample log:', logsData?.[0])
+
       // Calculate stats for each source
       const sourceStats: SourceStats[] = (sourcesData || []).map((source: any) => {
         const sourceLogs = (logsData || []).filter((log: any) => log.feed_id === source.id)
         const last24hItems = sourceLogs.reduce((sum: number, log: any) => sum + (log.items_fetched || 0), 0)
         const lastLog: any = sourceLogs[0]
+
+        if (source.name === 'Reuters Markets' || source.name === 'Bloomberg Markets') {
+          console.log(`${source.name} (${source.id}):`, {
+            logsCount: sourceLogs.length,
+            itemsSum: last24hItems,
+            sampleLog: sourceLogs[0]
+          })
+        }
 
         return {
           source,
