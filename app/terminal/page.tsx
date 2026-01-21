@@ -90,7 +90,8 @@ export default function TerminalPage() {
 
   useEffect(() => {
     checkSoundPermission()
-    simulateConnectionEvents()
+    // Note: Connection status is managed by the news feed subscriptions
+    // No need for simulated events - realtime channels handle reconnection automatically
   }, [])
 
   const checkSoundPermission = async () => {
@@ -101,16 +102,6 @@ export default function TerminalPage() {
         }, 2000)
       }
     }
-  }
-
-  const simulateConnectionEvents = () => {
-    setTimeout(() => {
-      setStatus('reconnecting')
-
-      setTimeout(() => {
-        setStatus('live')
-      }, 3000)
-    }, 10000)
   }
 
   return (
