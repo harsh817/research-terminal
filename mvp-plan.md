@@ -2,6 +2,35 @@
 
 Internal Research Terminal for Finance
 
+## ✅ Implementation Status (Updated: January 2026)
+
+### Core MVP Features - COMPLETED
+- [x] News Ingestion (30 RSS sources)
+- [x] Real-Time Updates (Supabase Realtime with unique channels)
+- [x] Six-Pane Layout (Americas, Europe, Asia Pacific, Macro & Policy, Corporate, Risk Events)
+- [x] Tagging System (Region, Markets, Themes)
+- [x] Pane Logic (Priority-based exclusive routing)
+- [x] News Interaction (Click to open in new tab)
+- [x] Sound Alerts (Tag-based with cooldown)
+- [x] Reliability (Graceful error handling, logging)
+
+### Additional Features - COMPLETED
+- [x] **User Authentication** - Supabase Auth with login/signup
+- [x] **Saved Items/Bookmarks** - Star/unsave with real-time sync
+- [x] **Read/Unread Tracking** - Visual indicators with per-user state
+- [x] **Date Filtering** - Shows today's news only (6-hour buffer)
+- [x] **Source Monitor Dashboard** - RSS feed health & statistics
+- [x] **Settings Page** - Sound controls + Source monitoring tabs
+- [x] **Row-Level Security** - User data isolation
+
+### Tech Stack - IMPLEMENTED
+- **Frontend**: Next.js 13.5 + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend**: Supabase (PostgreSQL + Realtime + Auth + Edge Functions)
+- **Deployment**: Vercel (frontend) + Supabase (backend)
+- **Ingestion**: External cron triggers Edge Function every 5 minutes
+
+---
+
 ## 1. Product Overview — 1-Liner Vision
 
 A real-time financial research terminal that surfaces critical global news through tagged, live-updating panes so users never miss market-moving events.
