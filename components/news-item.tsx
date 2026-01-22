@@ -106,7 +106,7 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, is
     <Card
       className={`group relative cursor-pointer border-l-4 bg-zinc-900 p-2 transition-all hover:shadow-lg hover:shadow-zinc-950/50 ${
         isNew
-          ? 'border-l-blue-500 bg-blue-500/10 animate-in fade-in slide-in-from-top-2 duration-500'
+          ? 'border-l-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/20 animate-in fade-in slide-in-from-top-2 duration-500 ring-2 ring-emerald-500/30'
           : 'border-l-transparent hover:border-l-zinc-700'
       } ${
         isRead ? 'opacity-60' : ''
@@ -121,8 +121,8 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, is
                 {formatTimestamp(timestamp)}
               </time>
               {isNew && (
-                <span className="inline-flex items-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                  New
+                <span className="inline-flex items-center rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-lg shadow-emerald-500/50 animate-pulse">
+                  NEW
                 </span>
               )}
               {isRead && (

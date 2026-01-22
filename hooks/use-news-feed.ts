@@ -377,7 +377,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
                 item.id === newItemId ? { ...item, isNew: false } : item
               )
             )
-          }, 5000)
+          }, 10000) // 10 seconds for better visibility
         }
       )
       .subscribe()
@@ -387,7 +387,7 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
       if (readItemsChannel) supabase.removeChannel(readItemsChannel)
       if (savedItemsChannel) supabase.removeChannel(savedItemsChannel)
     }
-  }, [pane, maxItems, soundCooldown])
+  }, []) // Empty array - run once on mount, real-time subscriptions handle all updates
 
   return { newsItems, isLoading, error }
 }
