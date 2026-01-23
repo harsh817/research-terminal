@@ -23,9 +23,11 @@ interface NewsItemProps {
   isNew?: boolean
   isRead?: boolean
   isSaved?: boolean
+  highlightType?: 'realtime' | 'gap' | 'none'
+  highlightUntil?: Date
 }
 
-export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, isRead: initialIsRead, isSaved: initialIsSaved }: NewsItemProps) {
+export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, isRead: initialIsRead, isSaved: initialIsSaved, highlightType = 'none', highlightUntil }: NewsItemProps) {
   const hasPlayedSound = useRef(false)
   const [isRead, setIsRead] = useState(initialIsRead)
   const [isSaved, setIsSaved] = useState(initialIsSaved)
@@ -102,13 +104,24 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, is
   const marketTags = tags.filter(tag => tag.type === 'market').slice(0, 2)
   const themeTags = tags.filter(tag => tag.type === 'theme').slice(0, 2)
 
+  // Check if highlight is still active
+  const isHighlightActive = highlightUntil && Date.now() < highlightUntil.getTime()
+  const activeHighlightType = isHighlightActive ? highlightType : 'none'
+
+  // Determine styling based on highlight type
+  const getHighlightStyles = () => {
+    if (activeHighlightType === 'realtime') {
+      return 'border-l-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/20 animate-in fade-in slide-in-from-top-2 duration-500 ring-2 ring-emerald-500/30'
+    }
+    if (activeHighlightType === 'gap') {
+      return 'border-l-blue-500 bg-blue-500/5 shadow-md shadow-blue-500/10 animate-in fade-in duration-300'
+    }
+    return 'border-l-transparent hover:border-l-zinc-700'
+  }
+
   return (
     <Card
-      className={`group relative cursor-pointer border-l-4 bg-zinc-900 p-2 transition-all hover:shadow-lg hover:shadow-zinc-950/50 ${
-        isNew
-          ? 'border-l-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/20 animate-in fade-in slide-in-from-top-2 duration-500 ring-2 ring-emerald-500/30'
-          : 'border-l-transparent hover:border-l-zinc-700'
-      } ${
+      className={`group relative cursor-pointer border-l-4 bg-zinc-900 p-2 transition-all hover:shadow-lg hover:shadow-zinc-950/50 ${getHighlightStyles()} ${
         isRead ? 'opacity-60' : ''
       }`}
       onClick={handleClick}
@@ -120,9 +133,14 @@ export function NewsItem({ id, headline, source, url, timestamp, tags, isNew, is
               <time className="text-[11px] font-mono font-semibold tabular-nums text-zinc-400">
                 {formatTimestamp(timestamp)}
               </time>
-              {isNew && (
+              {activeHighlightType === 'realtime' && (
                 <span className="inline-flex items-center rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-lg shadow-emerald-500/50 animate-pulse">
                   NEW
+                </span>
+              )}
+              {activeHighlightType === 'gap' && (
+                <span className="inline-flex items-center rounded-full bg-blue-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-500/50">
+                  UPDATED
                 </span>
               )}
               {isRead && (
