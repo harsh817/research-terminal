@@ -202,108 +202,88 @@ export function useNewsFeed({ pane, maxItems = 10, soundCooldown = 5000 }: UseNe
 
     fetchInitialNews()
 
-    // Page Visibility Handler - fetch gap when user returns
+    // Page Visibility Handler - refetch when user returns after being away
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now()
         const timeSinceLastFetch = now - lastVisibilityFetchRef.current
-        const VISIBILITY_FETCH_COOLDOWN = 60000 // 60 seconds
+        const VISIBILITY_FETCH_COOLDOWN = 5000 // 5 seconds - only skip very quick tab switches
         
-        // Only fetch if initial data loaded AND user was away >60 seconds
+        // Only act if initial data loaded
         if (!hasInitialDataRef.current) return
         
+        // Skip if user just switched tabs briefly (< 5 seconds)
         if (timeSinceLastFetch < VISIBILITY_FETCH_COOLDOWN) {
-          console.log(`[${pane}] Skipping gap fetch - too soon (${Math.round(timeSinceLastFetch/1000)}s since last fetch)`)
+          console.log(`[${pane}] Skipping refetch - quick tab switch (${Math.round(timeSinceLastFetch/1000)}s)`)
           return
         }
         
         lastVisibilityFetchRef.current = now
-        console.log(`[${pane}] Page visible - checking for missed updates...`)
+        console.log(`[${pane}] Page visible after ${Math.round(timeSinceLastFetch/1000)}s - refetching data...`)
         
-        const newestTimestamp = newestTimestampRef.current
-        if (!newestTimestamp) return
-        
+        // Refetch fresh data to ensure we have the latest
         try {
-          // Fetch items published after our newest item
-          const { data: gapItems } = await supabase
+          // Fetch items from last 24 hours
+          const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+          const startTimeISO = twentyFourHoursAgo.toISOString()
+          
+          const { data: newsData } = await supabase
             .from('news_items')
             .select('id, headline, source, url, published_at, region, markets, themes')
-            .gt('published_at', newestTimestamp.toISOString())
+            .gte('published_at', startTimeISO)
             .order('published_at', { ascending: false })
-            .limit(50)
+            .limit(100)
           
-          if (gapItems && gapItems.length > 0) {
-            console.log(`[${pane}] Found ${gapItems.length} missed items`)
+          if (!newsData || newsData.length === 0) return
+          
+          // Fetch all panes for routing
+          const { data: allPanes } = await supabase
+            .from('panes')
+            .select('id, title, rules')
+          
+          if (!allPanes) return
+          
+          // Fetch read/saved status
+          const { data: { user } } = await supabase.auth.getUser()
+          const newsIds = newsData.map((item: any) => item.id)
+          let readItemsSet = new Set<string>()
+          let savedItemsSet = new Set<string>()
+          
+          if (user && newsIds.length > 0) {
+            const { data: readItems } = await supabase
+              .from('user_read_items')
+              .select('news_item_id')
+              .eq('user_id', user.id)
+              .in('news_item_id', newsIds)
+            readItemsSet = new Set((readItems as any[] || []).map((r: any) => r.news_item_id))
             
-            // Fetch read/saved status for gap items
-            const { data: { user } } = await supabase.auth.getUser()
-            const itemIds = (gapItems as any[]).map((i: any) => i.id)
-            let readSet = new Set<string>()
-            let savedSet = new Set<string>()
-            
-            if (user && itemIds.length > 0) {
-              const { data: readItems } = await supabase
-                .from('user_read_items')
-                .select('news_item_id')
-                .eq('user_id', user.id)
-                .in('news_item_id', itemIds)
-              readSet = new Set((readItems as any[] || []).map((r: any) => r.news_item_id))
-              
-              const { data: savedItems } = await supabase
-                .from('user_saved_items')
-                .select('news_item_id')
-                .eq('user_id', user.id)
-                .in('news_item_id', itemIds)
-              savedSet = new Set((savedItems as any[] || []).map((s: any) => s.news_item_id))
-            }
-            
-            // Fetch all panes for routing
-            const { data: allPanes } = await supabase
-              .from('panes')
-              .select('id, title, rules')
-            
-            if (!allPanes) return
-            
-            // Filter items for this pane
-            const relevantGapItems = (gapItems as any[]).filter((item: any) => {
-              const bestMatch = getBestMatchingPane(item, allPanes)
-              return bestMatch === pane
+            const { data: savedItems } = await supabase
+              .from('user_saved_items')
+              .select('news_item_id')
+              .eq('user_id', user.id)
+              .in('news_item_id', newsIds)
+            savedItemsSet = new Set((savedItems as any[] || []).map((s: any) => s.news_item_id))
+          }
+          
+          // Filter items for this pane
+          const filteredNews = newsData
+            .filter((item: any) => {
+              const bestMatchPane = getBestMatchingPane(item, allPanes)
+              return bestMatchPane === pane
             })
-            
-            if (relevantGapItems.length === 0) return
-            
-            // Transform with gap highlighting (30 second blue highlight)
-            const transformedGap = relevantGapItems.map((item: any) => ({
-              ...transformNewsItem(item, false, readSet.has(item.id), savedSet.has(item.id)),
-              highlightType: 'gap' as const,
-              highlightUntil: new Date(Date.now() + 30000) // 30 seconds
-            }))
-            
-            // Add to existing items
-            setNewsItems(prev => {
-              const combined = [...transformedGap, ...prev]
-              const unique = Array.from(new Map(combined.map(item => [item.id, item])).values())
-              const result = unique.slice(0, maxItems)
-              // Update newest timestamp ref
-              if (result.length > 0) {
-                newestTimestampRef.current = result[0].timestamp
-              }
-              return result
+            .slice(0, maxItems)
+            .map((item: any) => {
+              loadedItemIds.current.add(item.id)
+              return transformNewsItem(item, false, readItemsSet.has(item.id), savedItemsSet.has(item.id))
             })
-            
-            // Clear gap highlighting after 30 seconds
-            setTimeout(() => {
-              setNewsItems(prev =>
-                prev.map(item => ({
-                  ...item,
-                  highlightType: 'none' as const,
-                  highlightUntil: undefined
-                }))
-              )
-            }, 30000)
+          
+          if (filteredNews.length > 0) {
+            setNewsItems(filteredNews)
+            newestTimestampRef.current = filteredNews[0].timestamp
+            console.log(`[${pane}] Refreshed with ${filteredNews.length} items`)
           }
         } catch (error) {
-          console.error(`[${pane}] Error fetching gap:`, error)
+          console.error(`[${pane}] Error refetching on visibility change:`, error)
         }
       }
     }
